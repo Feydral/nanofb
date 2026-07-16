@@ -2,7 +2,12 @@
 name = "nanofb"
 version = "0.1.0"
 edition = "2024"
+description = "nanofb is a small cross platform libary that offers a simple way to render pixels in a window."
+license = "MIT"
 
 [dependencies]
+bytemuck = { version = "1.25.1", features = ["derive"] }
+pollster = "1.0.1"
+raw-window-handle = "0.6.2"
 wgpu = "30.0.0"
 winit = "0.30.13"
