@@ -14,11 +14,11 @@ pub struct InputSnapshot {
 }
 
 impl InputSnapshot {
-    pub fn is_key_down(&self, key: Key) -> bool {
+    pub fn is_key_pressed(&self, key: Key) -> bool {
         self.pressed_keys.contains(&key)
     }
 
-    pub fn is_key_up(&self, key: Key) -> bool {
+    pub fn is_key_released(&self, key: Key) -> bool {
         self.released_keys.contains(&key)
     }
 
@@ -26,11 +26,11 @@ impl InputSnapshot {
         self.held_keys.contains(&key)
     }
 
-    pub fn is_mouse_button_down(&self, button: MouseButton) -> bool {
+    pub fn is_mouse_button_pressed(&self, button: MouseButton) -> bool {
         self.pressed_mouse_buttons.contains(&button)
     }
 
-    pub fn is_mouse_button_up(&self, button: MouseButton) -> bool {
+    pub fn is_mouse_button_released(&self, button: MouseButton) -> bool {
         self.released_mouse_buttons.contains(&button)
     }
 
