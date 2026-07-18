@@ -1,5 +1,4 @@
 use std::sync::Arc;
-
 use winit::window::Window as WinitWindow;
 
 use crate::window::{Color32, PresentError, WindowError};

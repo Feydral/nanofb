@@ -1,11 +1,13 @@
 mod color;
 mod error;
 mod event;
+mod input;
 
 pub use crate::renderer::{AspectMode, FilterMode};
 pub use color::Color32;
 pub use error::{CursorGrabError, IconError, PresentError, WindowError};
-pub use event::{CursorGrabMode, Event, InputSnapshot, Key, MouseButton};
+pub use event::{CursorGrabMode, Event};
+pub use input::{InputSnapshot, Key, MouseButton};
 
 use std::collections::HashSet;
 use std::sync::Arc;
