@@ -44,7 +44,6 @@ pub struct WindowOptions {
     pub resizable: bool,
     pub decorations: bool,
     pub always_on_top: bool,
-    pub transparent: bool,
     pub maximized: bool,
     pub fullscreen: FullscreenMode,
     pub min_size: Option<(u32, u32)>,
@@ -66,7 +65,6 @@ impl Default for WindowOptions {
             resizable: true,
             decorations: true,
             always_on_top: false,
-            transparent: false,
             maximized: false,
             fullscreen: FullscreenMode::Windowed,
             min_size: None,
@@ -241,7 +239,6 @@ impl Window {
             .with_inner_size(PhysicalSize::new(options.width, options.height))
             .with_resizable(options.resizable)
             .with_decorations(options.decorations)
-            .with_transparent(options.transparent)
             .with_maximized(options.maximized)
             .with_visible(options.visible);
 
@@ -293,7 +290,6 @@ impl Window {
         let renderer = Renderer::new(
             winit_window,
             options.filter_mode,
-            options.transparent,
             options.buffer_width,
             options.buffer_height,
             options.aspect_mode,

@@ -4,13 +4,8 @@ pub struct Color32(u32);
 
 impl Color32 {
     #[inline]
-    pub const fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self(r as u32 | (g as u32) << 8 | (b as u32) << 16 | (a as u32) << 24)
-    }
-
-    #[inline]
     pub const fn from_rgb(r: u8, g: u8, b: u8) -> Self {
-        Self::from_rgba(r, g, b, 255)
+        Self(r as u32 | (g as u32) << 8 | (b as u32) << 16)
     }
 
     #[inline]
@@ -29,11 +24,6 @@ impl Color32 {
     }
 
     #[inline]
-    pub const fn a(self) -> u8 {
-        ((self.0 >> 24) & 0xFF) as u8
-    }
-
-    #[inline]
     pub const fn to_u32(self) -> u32 {
         self.0
     }
@@ -48,7 +38,6 @@ impl Color32 {
     pub const RED: Self = Self::from_rgb(255, 0, 0);
     pub const GREEN: Self = Self::from_rgb(0, 255, 0);
     pub const BLUE: Self = Self::from_rgb(0, 0, 255);
-    pub const TRANSPARENT: Self = Self::from_rgba(0, 0, 0, 0);
 }
 
 impl From<u32> for Color32 {
@@ -62,13 +51,6 @@ impl From<Color32> for u32 {
     #[inline]
     fn from(color: Color32) -> Self {
         color.to_u32()
-    }
-}
-
-impl From<(u8, u8, u8, u8)> for Color32 {
-    #[inline]
-    fn from((r, g, b, a): (u8, u8, u8, u8)) -> Self {
-        Self::from_rgba(r, g, b, a)
     }
 }
 

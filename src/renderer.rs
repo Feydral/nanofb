@@ -41,7 +41,6 @@ impl Renderer {
     pub(crate) fn new(
         window: Arc<WinitWindow>,
         filter_mode: FilterMode,
-        transparent: bool,
         buffer_width: u32,
         buffer_height: u32,
         aspect_mode: AspectMode,
@@ -78,15 +77,13 @@ impl Renderer {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
-        let alpha_mode = choose_alpha_mode(&surface_caps.alpha_modes, transparent);
-
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode,
+            alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
             color_space: wgpu::SurfaceColorSpace::Auto,
@@ -372,7 +369,7 @@ fn color32_to_wgpu(color: Color32) -> wgpu::Color {
         r: color.r() as f64 / 255.0,
         g: color.g() as f64 / 255.0,
         b: color.b() as f64 / 255.0,
-        a: color.a() as f64 / 255.0,
+        a: 1.0,
     }
 }
 
@@ -396,26 +393,6 @@ fn compute_viewport(
         }
         AspectMode::Center => ((sw - bw) / 2.0, (sh - bh) / 2.0, bw, bh),
     }
-}
-
-fn choose_alpha_mode(
-    available: &[wgpu::CompositeAlphaMode],
-    transparent: bool,
-) -> wgpu::CompositeAlphaMode {
-    let preferred: &[wgpu::CompositeAlphaMode] = if transparent {
-        &[
-            wgpu::CompositeAlphaMode::PostMultiplied,
-            wgpu::CompositeAlphaMode::PreMultiplied,
-        ]
-    } else {
-        &[wgpu::CompositeAlphaMode::Opaque]
-    };
-
-    preferred
-        .iter()
-        .copied()
-        .find(|mode| available.contains(mode))
-        .unwrap_or(available[0])
 }
 
 fn create_pixel_texture(
