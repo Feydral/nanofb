@@ -51,3 +51,14 @@ impl fmt::Display for CursorGrabError {
 }
 
 impl std::error::Error for CursorGrabError {}
+
+#[derive(Debug)]
+pub struct IconError(pub(crate) String);
+
+impl fmt::Display for IconError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "failed to set window icon: {}", self.0)
+    }
+}
+
+impl std::error::Error for IconError {}

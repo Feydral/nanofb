@@ -1,11 +1,13 @@
-pub(crate) mod color;
-pub(crate) mod error;
+mod color;
+mod error;
 mod event;
 
+pub use crate::renderer::{AspectMode, FilterMode};
 pub use color::Color32;
-pub use error::{CursorGrabError, PresentError, WindowError};
-pub use event::{CursorGrabMode, Event, Key, MouseButton};
+pub use error::{CursorGrabError, IconError, PresentError, WindowError};
+pub use event::{CursorGrabMode, Event, InputSnapshot, Key, MouseButton};
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,13 +19,14 @@ use winit::event::{
 };
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::monitor::MonitorHandle;
 use winit::platform::pump_events::{EventLoopExtPumpEvents, PumpStatus};
 use winit::window::{
     CursorGrabMode as WinitCursorGrabMode, Fullscreen as WinitFullscreen, Window as WinitWindow,
     WindowAttributes, WindowId, WindowLevel,
 };
 
-use crate::renderer::{FilterMode, Renderer};
+use crate::renderer::Renderer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FullscreenMode {
@@ -49,14 +52,17 @@ pub struct WindowOptions {
     pub position: Option<(i32, i32)>,
     pub visible: bool,
     pub filter_mode: FilterMode,
+    pub buffer_width: u32,
+    pub buffer_height: u32,
+    pub aspect_mode: AspectMode,
 }
 
 impl Default for WindowOptions {
     fn default() -> Self {
         Self {
             title: "nanofb".to_string(),
-            width: 854,
-            height: 480,
+            width: 640,
+            height: 360,
             resizable: true,
             decorations: true,
             always_on_top: false,
@@ -68,7 +74,23 @@ impl Default for WindowOptions {
             position: None,
             visible: true,
             filter_mode: FilterMode::Nearest,
+            buffer_width: 640,
+            buffer_height: 360,
+            aspect_mode: AspectMode::default(),
         }
+    }
+}
+
+fn build_fullscreen(
+    mode: FullscreenMode,
+    monitor: Option<MonitorHandle>,
+) -> Option<WinitFullscreen> {
+    match mode {
+        FullscreenMode::Windowed => None,
+        FullscreenMode::Borderless => Some(WinitFullscreen::Borderless(monitor)),
+        FullscreenMode::Exclusive => monitor
+            .and_then(|m| m.video_modes().next())
+            .map(WinitFullscreen::Exclusive),
     }
 }
 
@@ -79,6 +101,16 @@ struct AppHandler {
     events: Vec<Event>,
     should_close: bool,
     focused: bool,
+
+    held_keys: HashSet<Key>,
+    pressed_keys: HashSet<Key>,
+    released_keys: HashSet<Key>,
+    held_mouse_buttons: HashSet<MouseButton>,
+    pressed_mouse_buttons: HashSet<MouseButton>,
+    released_mouse_buttons: HashSet<MouseButton>,
+    mouse_position: (f32, f32),
+    mouse_delta: (f32, f32),
+    scroll_delta: (f32, f32),
 }
 
 impl ApplicationHandler for AppHandler {
@@ -90,14 +122,7 @@ impl ApplicationHandler for AppHandler {
         let mut attributes = self.attributes.take().unwrap_or_default();
 
         if self.fullscreen != FullscreenMode::Windowed {
-            let monitor = event_loop.primary_monitor();
-            attributes.fullscreen = match self.fullscreen {
-                FullscreenMode::Borderless => Some(WinitFullscreen::Borderless(monitor)),
-                FullscreenMode::Exclusive => monitor
-                    .and_then(|m| m.video_modes().next())
-                    .map(WinitFullscreen::Exclusive),
-                FullscreenMode::Windowed => None,
-            };
+            attributes.fullscreen = build_fullscreen(self.fullscreen, event_loop.primary_monitor());
         }
 
         let window = event_loop
@@ -132,6 +157,10 @@ impl ApplicationHandler for AppHandler {
             }
             WindowEvent::Focused(f) => {
                 self.focused = f;
+                if !f {
+                    self.held_keys.clear();
+                    self.held_mouse_buttons.clear();
+                }
                 self.events.push(Event::Focused(f));
             }
             WindowEvent::KeyboardInput {
@@ -139,31 +168,44 @@ impl ApplicationHandler for AppHandler {
             } => {
                 if let PhysicalKey::Code(code) = key_event.physical_key {
                     let key = map_key(code);
-                    self.events.push(match key_event.state {
-                        ElementState::Pressed => Event::KeyDown(key),
-                        ElementState::Released => Event::KeyUp(key),
-                    });
+                    match key_event.state {
+                        ElementState::Pressed => {
+                            if !key_event.repeat {
+                                self.pressed_keys.insert(key);
+                            }
+                            self.held_keys.insert(key);
+                        }
+                        ElementState::Released => {
+                            self.held_keys.remove(&key);
+                            self.released_keys.insert(key);
+                        }
+                    }
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.events.push(Event::MouseMoved {
-                    x: position.x as f32,
-                    y: position.y as f32,
-                });
+                let (x, y) = (position.x as f32, position.y as f32);
+                self.mouse_position = (x, y);
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 let button = map_mouse_button(button);
-                self.events.push(match state {
-                    ElementState::Pressed => Event::MouseButtonDown(button),
-                    ElementState::Released => Event::MouseButtonUp(button),
-                });
+                match state {
+                    ElementState::Pressed => {
+                        self.held_mouse_buttons.insert(button);
+                        self.pressed_mouse_buttons.insert(button);
+                    }
+                    ElementState::Released => {
+                        self.held_mouse_buttons.remove(&button);
+                        self.released_mouse_buttons.insert(button);
+                    }
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let (dx, dy) = match delta {
                     MouseScrollDelta::LineDelta(x, y) => (x, y),
                     MouseScrollDelta::PixelDelta(pos) => (pos.x as f32, pos.y as f32),
                 };
-                self.events.push(Event::Scroll { dx, dy });
+                self.scroll_delta.0 += dx;
+                self.scroll_delta.1 += dy;
             }
             _ => {}
         }
@@ -176,10 +218,9 @@ impl ApplicationHandler for AppHandler {
         event: DeviceEvent,
     ) {
         if let DeviceEvent::MouseMotion { delta } = event {
-            self.events.push(Event::MouseDelta {
-                dx: delta.0 as f32,
-                dy: delta.1 as f32,
-            });
+            let (dx, dy) = (delta.0 as f32, delta.1 as f32);
+            self.mouse_delta.0 += dx;
+            self.mouse_delta.1 += dy;
         }
     }
 }
@@ -224,6 +265,15 @@ impl Window {
             events: Vec::new(),
             should_close: false,
             focused: false,
+            held_keys: HashSet::new(),
+            pressed_keys: HashSet::new(),
+            released_keys: HashSet::new(),
+            held_mouse_buttons: HashSet::new(),
+            pressed_mouse_buttons: HashSet::new(),
+            released_mouse_buttons: HashSet::new(),
+            mouse_position: (0.0, 0.0),
+            mouse_delta: (0.0, 0.0),
+            scroll_delta: (0.0, 0.0),
         };
 
         loop {
@@ -240,7 +290,14 @@ impl Window {
         app.events.clear();
 
         let winit_window = app.window.clone().expect("window created above");
-        let renderer = Renderer::new(winit_window, options.filter_mode, options.transparent)?;
+        let renderer = Renderer::new(
+            winit_window,
+            options.filter_mode,
+            options.transparent,
+            options.buffer_width,
+            options.buffer_height,
+            options.aspect_mode,
+        )?;
 
         Ok(Self {
             event_loop,
@@ -256,28 +313,56 @@ impl Window {
             .expect("window is always present after Window::new")
     }
 
-    pub fn poll_events(&mut self) -> Vec<Event> {
+    fn pump(&mut self) {
         let _ = self
             .event_loop
             .pump_app_events(Some(Duration::ZERO), &mut self.app);
+    }
+
+    pub fn poll_events(&mut self) -> Vec<Event> {
+        self.pump();
         std::mem::take(&mut self.app.events)
+    }
+
+    pub fn input_snapshot(&mut self) -> InputSnapshot {
+        self.pump();
+        InputSnapshot {
+            held_keys: self.app.held_keys.clone(),
+            pressed_keys: std::mem::take(&mut self.app.pressed_keys),
+            released_keys: std::mem::take(&mut self.app.released_keys),
+            held_mouse_buttons: self.app.held_mouse_buttons.clone(),
+            pressed_mouse_buttons: std::mem::take(&mut self.app.pressed_mouse_buttons),
+            released_mouse_buttons: std::mem::take(&mut self.app.released_mouse_buttons),
+            mouse_position: self.app.mouse_position,
+            mouse_delta: std::mem::take(&mut self.app.mouse_delta),
+            scroll_delta: std::mem::take(&mut self.app.scroll_delta),
+        }
     }
 
     pub fn present(&mut self, buffer: &[Color32]) -> Result<(), PresentError> {
         let size = self.winit_window().inner_size();
-        let width = size.width.max(1);
-        let height = size.height.max(1);
-        let expected = (width * height) as usize;
-
-        if buffer.len() != expected {
-            return Err(PresentError::BufferSizeMismatch {
-                expected,
-                got: buffer.len(),
-            });
-        }
-
-        self.renderer.resize(width, height);
+        self.renderer.resize(size.width, size.height);
         self.renderer.present(buffer)
+    }
+
+    pub fn buffer_width(&self) -> u32 {
+        self.renderer.buffer_width()
+    }
+
+    pub fn buffer_height(&self) -> u32 {
+        self.renderer.buffer_height()
+    }
+
+    pub fn set_buffer_size(&mut self, width: u32, height: u32) {
+        self.renderer.set_buffer_size(width, height);
+    }
+
+    pub fn set_aspect_mode(&mut self, mode: AspectMode) {
+        self.renderer.set_aspect_mode(mode);
+    }
+
+    pub fn set_background_color(&mut self, color: Color32) {
+        self.renderer.set_background_color(color);
     }
 
     pub fn width(&self) -> u32 {
@@ -294,6 +379,41 @@ impl Window {
 
     pub fn set_title(&mut self, title: &str) {
         self.winit_window().set_title(title);
+    }
+
+    pub fn set_fullscreen(&mut self, mode: FullscreenMode) {
+        let monitor = self.winit_window().current_monitor();
+        let fullscreen = build_fullscreen(mode, monitor);
+        self.winit_window().set_fullscreen(fullscreen);
+    }
+
+    pub fn set_maximized(&mut self, maximized: bool) {
+        self.winit_window().set_maximized(maximized);
+    }
+
+    pub fn set_icon(
+        &mut self,
+        pixels: &[Color32],
+        width: u32,
+        height: u32,
+    ) -> Result<(), IconError> {
+        let expected = (width * height) as usize;
+        if pixels.len() != expected {
+            return Err(IconError(format!(
+                "expected {expected} pixels, got {}",
+                pixels.len()
+            )));
+        }
+
+        let rgba: Vec<u8> = bytemuck::cast_slice(pixels).to_vec();
+        let icon = winit::window::Icon::from_rgba(rgba, width, height)
+            .map_err(|e| IconError(e.to_string()))?;
+        self.winit_window().set_window_icon(Some(icon));
+        Ok(())
+    }
+
+    pub fn clear_icon(&mut self) {
+        self.winit_window().set_window_icon(None);
     }
 
     pub fn should_close(&self) -> bool {

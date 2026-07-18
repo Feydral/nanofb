@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use winit::window::Window as WinitWindow;
 
-use crate::window::color::Color32;
-use crate::window::error::{PresentError, WindowError};
+use crate::window::{Color32, PresentError, WindowError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FilterMode {
@@ -12,17 +11,30 @@ pub enum FilterMode {
     Linear,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AspectMode {
+    #[default]
+    Stretch,
+    AspectFit,
+    Center,
+}
+
 pub(crate) struct Renderer {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface_config: wgpu::SurfaceConfiguration,
 
+    buffer_width: u32,
+    buffer_height: u32,
     pixel_texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     bind_group_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     pipeline: wgpu::RenderPipeline,
+
+    aspect_mode: AspectMode,
+    background_color: Color32,
 }
 
 impl Renderer {
@@ -30,6 +42,9 @@ impl Renderer {
         window: Arc<WinitWindow>,
         filter_mode: FilterMode,
         transparent: bool,
+        buffer_width: u32,
+        buffer_height: u32,
+        aspect_mode: AspectMode,
     ) -> Result<Self, WindowError> {
         let instance = wgpu::Instance::default();
         let surface = instance
@@ -63,13 +78,15 @@ impl Renderer {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
+        let alpha_mode = choose_alpha_mode(&surface_caps.alpha_modes, transparent);
+
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width.max(1),
             height: size.height.max(1),
             present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: surface_caps.alpha_modes[0],
+            alpha_mode,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
             color_space: wgpu::SurfaceColorSpace::Auto,
@@ -109,12 +126,14 @@ impl Renderer {
             ],
         });
 
+        let buffer_width = buffer_width.max(1);
+        let buffer_height = buffer_height.max(1);
         let (pixel_texture, bind_group) = create_pixel_texture(
             &device,
             &bind_group_layout,
             &sampler,
-            surface_config.width,
-            surface_config.height,
+            buffer_width,
+            buffer_height,
         );
 
         let shader_source = r#"
@@ -184,16 +203,52 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             device,
             queue,
             surface_config,
+            buffer_width,
+            buffer_height,
             pixel_texture,
             bind_group,
             bind_group_layout,
             sampler,
             pipeline,
+            aspect_mode,
+            background_color: Color32::BLACK,
         })
     }
 
-    pub(crate) fn size(&self) -> (u32, u32) {
-        (self.surface_config.width, self.surface_config.height)
+    pub(crate) fn buffer_width(&self) -> u32 {
+        self.buffer_width
+    }
+
+    pub(crate) fn buffer_height(&self) -> u32 {
+        self.buffer_height
+    }
+
+    pub(crate) fn set_buffer_size(&mut self, width: u32, height: u32) {
+        let width = width.max(1);
+        let height = height.max(1);
+        if (width, height) == (self.buffer_width, self.buffer_height) {
+            return;
+        }
+
+        self.buffer_width = width;
+        self.buffer_height = height;
+        let (texture, bind_group) = create_pixel_texture(
+            &self.device,
+            &self.bind_group_layout,
+            &self.sampler,
+            width,
+            height,
+        );
+        self.pixel_texture = texture;
+        self.bind_group = bind_group;
+    }
+
+    pub(crate) fn set_aspect_mode(&mut self, mode: AspectMode) {
+        self.aspect_mode = mode;
+    }
+
+    pub(crate) fn set_background_color(&mut self, color: Color32) {
+        self.background_color = color;
     }
 
     pub(crate) fn resize(&mut self, width: u32, height: u32) {
@@ -206,20 +261,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
-
-        let (texture, bind_group) = create_pixel_texture(
-            &self.device,
-            &self.bind_group_layout,
-            &self.sampler,
-            width,
-            height,
-        );
-        self.pixel_texture = texture;
-        self.bind_group = bind_group;
     }
 
     pub(crate) fn present(&mut self, buffer: &[Color32]) -> Result<(), PresentError> {
-        let (width, height) = self.size();
+        let (buf_width, buf_height) = (self.buffer_width, self.buffer_height);
+        let expected = (buf_width * buf_height) as usize;
+        if buffer.len() != expected {
+            return Err(PresentError::BufferSizeMismatch {
+                expected,
+                got: buffer.len(),
+            });
+        }
 
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -231,12 +283,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             bytemuck::cast_slice(buffer),
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * width),
-                rows_per_image: Some(height),
+                bytes_per_row: Some(4 * buf_width),
+                rows_per_image: Some(buf_height),
             },
             wgpu::Extent3d {
-                width,
-                height,
+                width: buf_width,
+                height: buf_height,
                 depth_or_array_layers: 1,
             },
         );
@@ -261,6 +313,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             }
         };
 
+        let (vx, vy, vw, vh) = compute_viewport(
+            self.aspect_mode,
+            self.surface_config.width,
+            self.surface_config.height,
+            buf_width,
+            buf_height,
+        );
+
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -278,7 +338,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(color32_to_wgpu(self.background_color)),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -289,6 +349,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.set_viewport(vx, vy, vw, vh, 0.0, 1.0);
             pass.draw(0..3, 0..1);
         }
 
@@ -304,6 +365,57 @@ fn filter_to_wgpu(mode: FilterMode) -> wgpu::FilterMode {
         FilterMode::Nearest => wgpu::FilterMode::Nearest,
         FilterMode::Linear => wgpu::FilterMode::Linear,
     }
+}
+
+fn color32_to_wgpu(color: Color32) -> wgpu::Color {
+    wgpu::Color {
+        r: color.r() as f64 / 255.0,
+        g: color.g() as f64 / 255.0,
+        b: color.b() as f64 / 255.0,
+        a: color.a() as f64 / 255.0,
+    }
+}
+
+fn compute_viewport(
+    mode: AspectMode,
+    surface_width: u32,
+    surface_height: u32,
+    buf_width: u32,
+    buf_height: u32,
+) -> (f32, f32, f32, f32) {
+    let (sw, sh) = (surface_width as f32, surface_height as f32);
+    let (bw, bh) = (buf_width as f32, buf_height as f32);
+
+    match mode {
+        AspectMode::Stretch => (0.0, 0.0, sw, sh),
+        AspectMode::AspectFit => {
+            let scale = (sw / bw).min(sh / bh);
+            let w = bw * scale;
+            let h = bh * scale;
+            ((sw - w) / 2.0, (sh - h) / 2.0, w, h)
+        }
+        AspectMode::Center => ((sw - bw) / 2.0, (sh - bh) / 2.0, bw, bh),
+    }
+}
+
+fn choose_alpha_mode(
+    available: &[wgpu::CompositeAlphaMode],
+    transparent: bool,
+) -> wgpu::CompositeAlphaMode {
+    let preferred: &[wgpu::CompositeAlphaMode] = if transparent {
+        &[
+            wgpu::CompositeAlphaMode::PostMultiplied,
+            wgpu::CompositeAlphaMode::PreMultiplied,
+        ]
+    } else {
+        &[wgpu::CompositeAlphaMode::Opaque]
+    };
+
+    preferred
+        .iter()
+        .copied()
+        .find(|mode| available.contains(mode))
+        .unwrap_or(available[0])
 }
 
 fn create_pixel_texture(

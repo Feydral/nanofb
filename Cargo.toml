@@ -8,6 +8,5 @@ license = "MIT"
 [dependencies]
 bytemuck = { version = "1.25.1", features = ["derive"] }
 pollster = "1.0.1"
-raw-window-handle = "0.6.2"
 wgpu = "30.0.0"
 winit = "0.30.13"
