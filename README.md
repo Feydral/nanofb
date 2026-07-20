@@ -17,29 +17,29 @@ graph, no asset system. Just a window and a buffer.
 
 ## Features
 
-- **Simple presentation model.** Own a `Vec<Color>`, write to it, call
+- **Simple presentation model:** Own a `Vec<Color>`, write to it, call
   `window.present(&buffer)`. Nothing else required.
-- **Buffer resolution decoupled from window size.** The pixel buffer keeps
+- **Buffer resolution decoupled from window size:** The pixel buffer keeps
   a fixed resolution (`buffer_width`/`buffer_height`) independent of the
   actual window size, so resizing the window never requires resizing the
   buffer. How the buffer fills the window is controlled by `AspectMode`
   (`Stretch`, `AspectFit`, `Center`), with a configurable background color
   for any letterboxed or bordered area.
-- **Configurable sampling.** `FilterMode::Nearest` for crisp pixel art, or
+- **Configurable sampling:** `FilterMode::Nearest` for crisp pixel art, or
   `FilterMode::Linear` for smoothed scaling.
-- **Full window control.** Resizable, fullscreen (windowed, borderless, or
+- **Full window control:** Resizable, fullscreen (windowed, borderless, or
   exclusive), maximized, always-on-top, decorations, min/max size, initial
   position — all configurable at creation, with runtime setters for the
   ones that commonly change during a session (fullscreen, maximized,
   title, icon).
-- **Events and input** `poll_events()` drains window-level events (resize,
+- **Events and input:** `poll_events()` drains window-level events (resize,
   close, focus). `input_snapshot()` returns a full keyboard/mouse state
   snapshot, distinguishing keys/buttons that were just pressed, just
   released, or are currently held, plus mouse position, mouse delta, and
   scroll delta.
-- **Cursor control.** Show/hide the cursor, or confine/lock it to the
+- **Cursor control:** Show/hide the cursor, or confine/lock it to the
   window for FPS-style camera controls.
-- **Window icons.** Build one from raw RGBA pixels, or load it directly
+- **Window icons:** Build one from raw RGBA pixels, or load it directly
   from an image file (PNG, JPEG, GIF, BMP, and more, via the `image`
   crate).
 
