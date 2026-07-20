@@ -5,8 +5,7 @@ A minimal pixel-buffer window library for Rust. Open a window, hand it a
 
 ## Overview
 
-nanofb gives you the same mental model as libraries like `minifb`: you own
-a flat pixel buffer, write to it however you like, and call `present()`
+How it works: you own a flat pixel buffer, write to it however you like, and call `window.present(&buffer)`
 once per frame. Underneath, it's built on `winit` (windowing and input)
 and `wgpu` (presentation), but neither of those crates is
 ever exposed through the public API — nanofb has its own `Window`,
@@ -123,8 +122,6 @@ fn main() {
     }
 }
 ```
-
-More examples live in [`examples/`](examples/).
 
 ## Project structure
 
