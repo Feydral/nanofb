@@ -69,8 +69,8 @@ mod renderer;
 mod window;
 
 pub use window::{
-    Color, CursorGrabError, CursorGrabMode, Event, FullscreenMode, Icon, IconError,
-    InputSnapshot, Key, MouseButton, PresentError, Window, WindowError, WindowOptions,
+    Color, CursorGrabError, CursorGrabMode, Event, FullscreenMode, Icon, IconError, InputSnapshot,
+    Key, MouseButton, PresentError, Window, WindowError, WindowOptions,
 };
 
 pub use renderer::{AspectMode, FilterMode};
