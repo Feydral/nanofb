@@ -1,12 +1,13 @@
 mod color;
 mod error;
 mod event;
+mod icon;
 mod input;
 
-pub use crate::renderer::{AspectMode, FilterMode};
 pub use color::Color32;
 pub use error::{CursorGrabError, IconError, PresentError, WindowError};
 pub use event::{CursorGrabMode, Event};
+pub use icon::Icon;
 pub use input::{InputSnapshot, Key, MouseButton};
 
 use std::collections::HashSet;
@@ -29,6 +30,7 @@ use winit::window::{
 };
 
 use crate::renderer::Renderer;
+use crate::renderer::{AspectMode, FilterMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FullscreenMode {
@@ -379,6 +381,14 @@ impl Window {
         self.winit_window().set_title(title);
     }
 
+    pub fn fullscreen_mode(&self) -> FullscreenMode {
+        match self.winit_window().fullscreen() {
+            None => FullscreenMode::Windowed,
+            Some(WinitFullscreen::Borderless(_)) => FullscreenMode::Borderless,
+            Some(WinitFullscreen::Exclusive(_)) => FullscreenMode::Exclusive,
+        }
+    }
+
     pub fn set_fullscreen(&mut self, mode: FullscreenMode) {
         let monitor = self.winit_window().current_monitor();
         let fullscreen = build_fullscreen(mode, monitor);
@@ -389,24 +399,10 @@ impl Window {
         self.winit_window().set_maximized(maximized);
     }
 
-    pub fn set_icon(
-        &mut self,
-        pixels: &[Color32],
-        width: u32,
-        height: u32,
-    ) -> Result<(), IconError> {
-        let expected = (width * height) as usize;
-        if pixels.len() != expected {
-            return Err(IconError(format!(
-                "expected {expected} pixels, got {}",
-                pixels.len()
-            )));
-        }
-
-        let rgba: Vec<u8> = bytemuck::cast_slice(pixels).to_vec();
-        let icon = winit::window::Icon::from_rgba(rgba, width, height)
+    pub fn set_icon(&mut self, icon: Icon) -> Result<(), IconError> {
+        let winit_icon = winit::window::Icon::from_rgba(icon.rgba, icon.width, icon.height)
             .map_err(|e| IconError(e.to_string()))?;
-        self.winit_window().set_window_icon(Some(icon));
+        self.winit_window().set_window_icon(Some(winit_icon));
         Ok(())
     }
 
@@ -418,7 +414,7 @@ impl Window {
         self.app.should_close
     }
 
-    pub fn request_close(&mut self) {
+    pub fn close(&mut self) {
         self.app.should_close = true;
     }
 

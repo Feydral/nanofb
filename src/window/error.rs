@@ -1,9 +1,15 @@
+//! Error types returned by this crate.
+
 use std::fmt;
 
+/// An error returned by [`Window::new`].
 #[derive(Debug)]
 pub enum WindowError {
+    /// The underlying platform window could not be created.
     WindowCreationFailed(String),
+    /// No suitable graphics adapter (GPU) was found.
     NoSuitableAdapter(String),
+    /// The graphics device could not be created.
     DeviceCreationFailed(String),
 }
 
@@ -21,9 +27,19 @@ impl fmt::Display for WindowError {
 
 impl std::error::Error for WindowError {}
 
+/// An error returned by [`Window::present`].
+///
+/// Transient, recoverable GPU surface errors (e.g. a surface becoming
+/// briefly outdated during a resize) are handled internally and never
+/// surfaced here; only errors that require the caller's attention are
+/// returned.
 #[derive(Debug)]
 pub enum PresentError {
+    /// The provided buffer's length didn't match
+    /// `buffer_width() * buffer_height()`.
     BufferSizeMismatch { expected: usize, got: usize },
+    /// An unrecoverable graphics error occurred (e.g. the GPU device was
+    /// lost, or the system ran out of graphics memory).
     Fatal(String),
 }
 
@@ -41,6 +57,7 @@ impl fmt::Display for PresentError {
 
 impl std::error::Error for PresentError {}
 
+/// An error returned by [`Window::set_cursor_grab`].
 #[derive(Debug)]
 pub struct CursorGrabError(pub(crate) String);
 
@@ -52,6 +69,8 @@ impl fmt::Display for CursorGrabError {
 
 impl std::error::Error for CursorGrabError {}
 
+/// An error returned by [`Icon::from_rgba`], [`Icon::from_file`],
+/// or [`Window::set_icon`].
 #[derive(Debug)]
 pub struct IconError(pub(crate) String);
 

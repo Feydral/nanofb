@@ -2,13 +2,16 @@ mod renderer;
 mod window;
 
 pub use window::{
-    AspectMode, Color32, CursorGrabError, CursorGrabMode, Event, FilterMode, FullscreenMode,
+    Color32, CursorGrabError, CursorGrabMode, Event, FullscreenMode, Icon, IconError,
     InputSnapshot, Key, MouseButton, PresentError, Window, WindowError, WindowOptions,
 };
+
+pub use renderer::{AspectMode, FilterMode};
 
 pub mod prelude {
     pub use crate::{
         AspectMode, Color32, CursorGrabError, CursorGrabMode, Event, FilterMode, FullscreenMode,
-        InputSnapshot, Key, MouseButton, PresentError, Window, WindowError, WindowOptions,
+        Icon, IconError, InputSnapshot, Key, MouseButton, PresentError, Window, WindowError,
+        WindowOptions,
     };
 }
