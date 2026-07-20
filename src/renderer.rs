@@ -1,8 +1,18 @@
+//! The wgpu-backed rendering pipeline that blits a [`Color`] pixel
+//! buffer onto a window's surface. Not part of the public API beyond
+//! [`FilterMode`] and [`AspectMode`]; see [`Window`] for the
+//! public entry points.
+
 use std::sync::Arc;
 use winit::window::Window as WinitWindow;
 
-use crate::window::{Color32, PresentError, WindowError};
+use crate::window::{Color, PresentError, WindowError};
 
+/// How the pixel buffer is sampled when it's stretched or scaled to fill
+/// the window (see [`AspectMode`]).
+///
+/// `Nearest` keeps pixel edges crisp (recommended for pixel art / retro
+/// rendering). `Linear` smooths the result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FilterMode {
     #[default]
@@ -10,11 +20,20 @@ pub enum FilterMode {
     Linear,
 }
 
+/// How the pixel buffer is scaled to fill the window when their sizes or
+/// aspect ratios don't match.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AspectMode {
+    /// Stretches the buffer to exactly fill the window, ignoring aspect
+    /// ratio.
     #[default]
     Stretch,
+    /// Scales the buffer to fit the window while preserving its aspect
+    /// ratio, letterboxing the rest with the background color (see
+    /// [`Window::set_background_color`]).
     AspectFit,
+    /// Draws the buffer at 1:1 pixel scale, centered in the window, with
+    /// any extra space filled with the background color.
     Center,
 }
 
@@ -33,7 +52,7 @@ pub(crate) struct Renderer {
     pipeline: wgpu::RenderPipeline,
 
     aspect_mode: AspectMode,
-    background_color: Color32,
+    background_color: Color,
 }
 
 impl Renderer {
@@ -207,7 +226,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             sampler,
             pipeline,
             aspect_mode,
-            background_color: Color32::BLACK,
+            background_color: Color::BLACK,
         })
     }
 
@@ -243,7 +262,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         self.aspect_mode = mode;
     }
 
-    pub(crate) fn set_background_color(&mut self, color: Color32) {
+    pub(crate) fn set_background_color(&mut self, color: Color) {
         self.background_color = color;
     }
 
@@ -259,7 +278,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         self.surface.configure(&self.device, &self.surface_config);
     }
 
-    pub(crate) fn present(&mut self, buffer: &[Color32]) -> Result<(), PresentError> {
+    pub(crate) fn present(&mut self, buffer: &[Color]) -> Result<(), PresentError> {
         let (buf_width, buf_height) = (self.buffer_width, self.buffer_height);
         let expected = (buf_width * buf_height) as usize;
         if buffer.len() != expected {
@@ -334,7 +353,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(color32_to_wgpu(self.background_color)),
+                        load: wgpu::LoadOp::Clear(color_to_wgpu(self.background_color)),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -363,7 +382,7 @@ fn filter_to_wgpu(mode: FilterMode) -> wgpu::FilterMode {
     }
 }
 
-fn color32_to_wgpu(color: Color32) -> wgpu::Color {
+fn color_to_wgpu(color: Color) -> wgpu::Color {
     wgpu::Color {
         r: color.r() as f64 / 255.0,
         g: color.g() as f64 / 255.0,

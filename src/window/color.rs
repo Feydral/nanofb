@@ -1,20 +1,20 @@
-//! The [`Color32`] pixel type used for buffers passed to [`Window::present`].
+//! The [`Color`] type used for buffers passed to [`Window::present`].
 
 /// An opaque 32-bit RGB color, packed for zero-cost upload to the GPU.
 ///
 /// The bytes are laid out as `[r, g, b, 0]` in memory on little-endian
 /// platforms, matching `wgpu::TextureFormat::Rgba8Unorm`'s byte order. The
 /// top byte is always zero and unused (windows are always opaque), which
-/// means a `&[Color32]` buffer can be uploaded to the GPU with a plain
+/// means a `&[Color]` buffer can be uploaded to the GPU with a plain
 /// byte-cast, no per-pixel conversion needed.
 ///
-/// `Color32` is `#[repr(transparent)]` over `u32`, so it has identical
+/// `Color` is `#[repr(transparent)]` over `u32`, so it has identical
 /// size, alignment, and bit layout to `u32`.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Color32(u32);
+pub struct Color(u32);
 
-impl Color32 {
+impl Color {
     /// Builds a color from red, green, and blue components.
     #[inline]
     pub const fn from_rgb(r: u8, g: u8, b: u8) -> Self {
@@ -58,24 +58,24 @@ impl Color32 {
     pub const BLUE: Self = Self::from_rgb(0, 0, 255);
 }
 
-impl From<u32> for Color32 {
-    /// Same as [`Color32::from_u32`].
+impl From<u32> for Color {
+    /// Same as [`Color::from_u32`].
     #[inline]
     fn from(value: u32) -> Self {
         Self::from_u32(value)
     }
 }
 
-impl From<Color32> for u32 {
-    /// Same as [`Color32::to_u32`].
+impl From<Color> for u32 {
+    /// Same as [`Color::to_u32`].
     #[inline]
-    fn from(color: Color32) -> Self {
+    fn from(color: Color) -> Self {
         color.to_u32()
     }
 }
 
-impl From<(u8, u8, u8)> for Color32 {
-    /// Same as [`Color32::from_rgb`].
+impl From<(u8, u8, u8)> for Color {
+    /// Same as [`Color::from_rgb`].
     #[inline]
     fn from((r, g, b): (u8, u8, u8)) -> Self {
         Self::from_rgb(r, g, b)

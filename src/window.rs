@@ -1,10 +1,13 @@
+//! Window creation, the event loop, and the public [`Window`] API. This is
+//! the only module users of the crate interact with directly.
+
 mod color;
 mod error;
 mod event;
 mod icon;
 mod input;
 
-pub use color::Color32;
+pub use color::Color;
 pub use error::{CursorGrabError, IconError, PresentError, WindowError};
 pub use event::{CursorGrabMode, Event};
 pub use icon::Icon;
@@ -32,31 +35,81 @@ use winit::window::{
 use crate::renderer::Renderer;
 use crate::renderer::{AspectMode, FilterMode};
 
+/// How the window should occupy the screen. See
+/// [`Window::set_fullscreen`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FullscreenMode {
+    /// A normal, windowed presentation.
     #[default]
     Windowed,
+    /// Fullscreen without a video mode change; the window simply expands
+    /// to cover the screen. Works well on all platforms and switches
+    /// quickly.
     Borderless,
+    /// Exclusive fullscreen, taking over the display's video mode
+    /// directly. Slower to enter/exit and less portable than
+    /// `Borderless`, but may offer lower input latency.
     Exclusive,
 }
 
+/// Configuration used to create a [`Window`].
+///
+/// Construct with [`WindowOptions::default`] and override only the fields
+/// you care about:
+///
+/// ```no_run
+/// use nanofb::prelude::*;
+///
+/// let options = WindowOptions {
+///     title: "My Game".to_string(),
+///     width: 800,
+///     height: 600,
+///     ..Default::default()
+/// };
+/// ```
 #[derive(Debug, Clone)]
 pub struct WindowOptions {
+    /// Text shown in the window's title bar.
     pub title: String,
+    /// Initial window width, in physical pixels.
     pub width: u32,
+    /// Initial window height, in physical pixels.
     pub height: u32,
+    /// Whether the user can resize the window by dragging its edges.
     pub resizable: bool,
+    /// Whether the window has a title bar and border.
     pub decorations: bool,
+    /// Whether the window should stay above other windows.
     pub always_on_top: bool,
+    /// Whether the window starts maximized.
     pub maximized: bool,
+    /// Whether, and how, the window starts in fullscreen. See
+    /// [`FullscreenMode`].
     pub fullscreen: FullscreenMode,
+    /// Smallest size the user is allowed to resize the window to, in
+    /// physical pixels. `None` means no minimum.
     pub min_size: Option<(u32, u32)>,
+    /// Largest size the user is allowed to resize the window to, in
+    /// physical pixels. `None` means no maximum.
     pub max_size: Option<(u32, u32)>,
+    /// Initial position of the window's top-left corner, in physical
+    /// screen pixels. `None` lets the platform choose.
     pub position: Option<(i32, i32)>,
+    /// Whether the window is shown immediately on creation.
     pub visible: bool,
+    /// Filtering used when presenting the pixel buffer. Defaults to
+    /// [`FilterMode::Nearest`] for crisp pixels.
     pub filter_mode: FilterMode,
+    /// Initial pixel buffer width. Independent of `width`: the window can
+    /// be resized freely without needing a matching buffer resize, since
+    /// the buffer is scaled to the window according to `aspect_mode`.
+    /// Change it later with [`Window::set_buffer_size`].
     pub buffer_width: u32,
+    /// Initial pixel buffer height. See `buffer_width`.
     pub buffer_height: u32,
+    /// How the pixel buffer is scaled to fill the window when their sizes
+    /// or aspect ratios don't match. Change it later with
+    /// [`Window::set_aspect_mode`].
     pub aspect_mode: AspectMode,
 }
 
@@ -227,6 +280,12 @@ impl ApplicationHandler for AppHandler {
     }
 }
 
+/// A window that a raw RGB pixel buffer can be presented to.
+///
+/// `Window` owns the platform window and drives the renderer; it does not
+/// own the pixel buffer itself. Create your own `Vec<Color>`, write to
+/// it however you like, and hand a reference to [`Window::present`] once
+/// per frame.
 pub struct Window {
     event_loop: EventLoop<()>,
     app: AppHandler,
@@ -234,6 +293,8 @@ pub struct Window {
 }
 
 impl Window {
+    /// Creates a new window and initializes the graphics context. Must be
+    /// called from your program's main thread.
     pub fn new(options: WindowOptions) -> Result<Self, WindowError> {
         let mut event_loop =
             EventLoop::new().map_err(|e| WindowError::WindowCreationFailed(e.to_string()))?;
@@ -319,11 +380,20 @@ impl Window {
             .pump_app_events(Some(Duration::ZERO), &mut self.app);
     }
 
+    /// Polls and drains all pending window events since the last call.
+    ///
+    /// Never blocks. Call it once per frame, typically at the top of your
+    /// loop.
     pub fn poll_events(&mut self) -> Vec<Event> {
         self.pump();
         std::mem::take(&mut self.app.events)
     }
 
+    /// Takes a snapshot of the current keyboard and mouse state.
+    ///
+    /// Call this once per frame, typically alongside [`Window::poll_events`].
+    /// See [`InputSnapshot`] for what it captures and how
+    /// pressed/released/held differ.
     pub fn input_snapshot(&mut self) -> InputSnapshot {
         self.pump();
         InputSnapshot {
@@ -339,48 +409,73 @@ impl Window {
         }
     }
 
-    pub fn present(&mut self, buffer: &[Color32]) -> Result<(), PresentError> {
+    /// Uploads `buffer` and presents it to the window.
+    ///
+    /// `buffer` must have exactly `buffer_width() * buffer_height()`
+    /// elements. This is independent of the window's actual size: resizing
+    /// the window does not require resizing `buffer`, since it's scaled to
+    /// fit according to [`Window::set_aspect_mode`].
+    ///
+    /// Transient, recoverable surface errors (e.g. a surface briefly
+    /// outdated during a resize) are retried internally; only errors that
+    /// require the caller's attention are returned.
+    pub fn present(&mut self, buffer: &[Color]) -> Result<(), PresentError> {
         let size = self.winit_window().inner_size();
         self.renderer.resize(size.width, size.height);
         self.renderer.present(buffer)
     }
 
+    /// The pixel buffer width [`Window::present`] currently expects.
     pub fn buffer_width(&self) -> u32 {
         self.renderer.buffer_width()
     }
 
+    /// The pixel buffer height [`Window::present`] currently expects.
     pub fn buffer_height(&self) -> u32 {
         self.renderer.buffer_height()
     }
 
+    /// Changes the pixel buffer resolution. Takes effect on the next call
+    /// to [`Window::present`], which will then expect a buffer of the new
+    /// size.
     pub fn set_buffer_size(&mut self, width: u32, height: u32) {
         self.renderer.set_buffer_size(width, height);
     }
 
+    /// Changes how the pixel buffer is scaled to fill the window.
     pub fn set_aspect_mode(&mut self, mode: AspectMode) {
         self.renderer.set_aspect_mode(mode);
     }
 
-    pub fn set_background_color(&mut self, color: Color32) {
+    /// Changes the color used to fill the area around the pixel buffer
+    /// when it doesn't cover the whole window (letterboxing in
+    /// [`AspectMode::AspectFit`], or the border in [`AspectMode::Center`]).
+    /// Defaults to opaque black.
+    pub fn set_background_color(&mut self, color: Color) {
         self.renderer.set_background_color(color);
     }
 
+    /// The window's current width in physical pixels.
     pub fn width(&self) -> u32 {
         self.winit_window().inner_size().width.max(1)
     }
 
+    /// The window's current height in physical pixels.
     pub fn height(&self) -> u32 {
         self.winit_window().inner_size().height.max(1)
     }
 
+    /// Whether the window currently has keyboard focus.
     pub fn is_focused(&self) -> bool {
         self.app.focused
     }
 
+    /// Changes the window's title.
     pub fn set_title(&mut self, title: &str) {
         self.winit_window().set_title(title);
     }
 
+    /// The window's current fullscreen state.
     pub fn fullscreen_mode(&self) -> FullscreenMode {
         match self.winit_window().fullscreen() {
             None => FullscreenMode::Windowed,
@@ -389,16 +484,21 @@ impl Window {
         }
     }
 
+    /// Switches the window between windowed and fullscreen presentation.
+    /// See [`FullscreenMode`] for the available modes.
     pub fn set_fullscreen(&mut self, mode: FullscreenMode) {
         let monitor = self.winit_window().current_monitor();
         let fullscreen = build_fullscreen(mode, monitor);
         self.winit_window().set_fullscreen(fullscreen);
     }
 
+    /// Maximizes or restores the window.
     pub fn set_maximized(&mut self, maximized: bool) {
         self.winit_window().set_maximized(maximized);
     }
 
+    /// Sets the window's title bar / taskbar icon. Not supported on all
+    /// platforms (e.g. ignored on macOS, which uses the app bundle icon).
     pub fn set_icon(&mut self, icon: Icon) -> Result<(), IconError> {
         let winit_icon = winit::window::Icon::from_rgba(icon.rgba, icon.width, icon.height)
             .map_err(|e| IconError(e.to_string()))?;
@@ -406,22 +506,34 @@ impl Window {
         Ok(())
     }
 
+    /// Removes the window icon set by [`Window::set_icon`], reverting to
+    /// the platform default.
     pub fn clear_icon(&mut self) {
         self.winit_window().set_window_icon(None);
     }
 
+    /// Whether the window has been requested to close, either by the user
+    /// (e.g. clicking the close button) or by a call to [`Window::close`].
     pub fn should_close(&self) -> bool {
         self.app.should_close
     }
 
+    /// Requests that the window close: sets a flag checked by
+    /// [`Window::should_close`], which your loop is expected to act on
+    /// (e.g. `break`). This alone doesn't destroy the window or free its
+    /// graphics resources; that happens automatically once `Window` is
+    /// dropped, typically when it goes out of scope at the end of `main`.
     pub fn close(&mut self) {
         self.app.should_close = true;
     }
 
+    /// Shows or hides the mouse cursor.
     pub fn set_cursor_visible(&mut self, visible: bool) {
         self.winit_window().set_cursor_visible(visible);
     }
 
+    /// Confines or locks the cursor to the window. See [`CursorGrabMode`]
+    /// for the difference between confining and locking.
     pub fn set_cursor_grab(&mut self, mode: CursorGrabMode) -> Result<(), CursorGrabError> {
         let winit_mode = match mode {
             CursorGrabMode::None => WinitCursorGrabMode::None,

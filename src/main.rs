@@ -20,10 +20,10 @@ fn main() {
 
     let mut window = Window::new(window_opts).unwrap();
     window.set_icon(icon).unwrap();
-    window.set_background_color(Color32::from_rgb(128, 128, 255));
+    window.set_background_color(Color::from_rgb(128, 128, 255));
     window.set_cursor_visible(false);
 
-    let mut buffer = vec![Color32::BLACK; (BUFFER_WIDTH * BUFFER_HEIGHT) as usize];
+    let mut buffer = vec![Color::BLACK; (BUFFER_WIDTH * BUFFER_HEIGHT) as usize];
 
     while !window.should_close() {
         for event in window.poll_events() {
@@ -35,7 +35,7 @@ fn main() {
         for (idx, pixel) in buffer.iter_mut().enumerate() {
             let x = (idx as u32 % BUFFER_WIDTH) as u8;
             let y = (idx as u32 / BUFFER_WIDTH) as u8;
-            *pixel = Color32::from_rgb(x.wrapping_mul(2), y.wrapping_mul(2), 128);
+            *pixel = Color::from_rgb(x.wrapping_mul(2), y.wrapping_mul(2), 128);
         }
 
         window.present(&buffer).unwrap();

@@ -4,7 +4,7 @@ use crate::window::error::IconError;
 
 /// Window icon data (RGBA8, one byte per channel).
 ///
-/// Unlike [`Color32`], icons carry an alpha channel, since taskbar
+/// Unlike [`Color`], icons carry an alpha channel, since taskbar
 /// and title bar icons are usually non-rectangular (e.g. a circular logo
 /// on a transparent square canvas). Build one with [`Icon::from_rgba`] or
 /// [`Icon::from_file`], then pass it to [`Window::set_icon`].
